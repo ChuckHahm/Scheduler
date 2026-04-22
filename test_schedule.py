@@ -375,5 +375,69 @@ class TestMakeLoadPct(unittest.TestCase):
         self.assertGreater(load_pct, THRESH)
 
 
+# ---------------------------------------------------------------------------
+# Date-drop regression (root cause: how='left' on load_col in display_output)
+# ---------------------------------------------------------------------------
+
+class TestDisplayDateCompleteness(unittest.TestCase):
+    """
+    Reproduces the bug where a date with no shift AND no appointment data is
+    silently dropped from the displayed table.
+
+    Root cause — display_output line:
+        dft = load_col.merge(dft, left_index=True, right_index=True, how='left').T
+
+    load_col only contains dates present in make_load_pct() output, which is
+    built from the union of shift and appointment CSV data.  A date that appears
+    in get_date_list() but has no records in either CSV (e.g. May 13 if no
+    shifts are scheduled and no orders exist) is absent from load_col, so the
+    how='left' join removes it even though all three earlier merges preserved it.
+
+    Fix: reindex load_col against the full date_list before merging so that
+    data-less dates receive '0% U' instead of being dropped.
+    """
+
+    D_WITH_DATA    = '2026-04-23'
+    D_WITHOUT_DATA = '2026-05-13'   # the "missing" date
+
+    def _build_load_col(self, dates_with_data):
+        """Simulate load_col as built inside display_output."""
+        idx = pd.Index(dates_with_data)
+        col = pd.DataFrame({'LoadPct': ['50'] * len(idx)}, index=idx)
+        col['LoadPct'] = col['LoadPct'].apply(lambda x: f"{x}% U")
+        return col
+
+    def _build_dft(self, all_dates):
+        """Simulate dft after the three earlier (right/outer) merges — all dates present."""
+        return pd.DataFrame(
+            {'AM': ['3', '0'], 'PERIOD_NAME': ['Open', 'NO SHIFT']},
+            index=pd.Index(all_dates),
+        )
+
+    def test_date_without_data_is_dropped_by_left_merge(self):
+        """Demonstrates the bug: how='left' drops D_WITHOUT_DATA."""
+        load_col = self._build_load_col([self.D_WITH_DATA])          # no May 13
+        dft      = self._build_dft([self.D_WITH_DATA, self.D_WITHOUT_DATA])
+
+        result = load_col.merge(dft, left_index=True, right_index=True, how='left').T
+        self.assertNotIn(self.D_WITHOUT_DATA, result.columns,
+                         "Bug confirmed: date without data is absent from output")
+
+    def test_reindex_fix_preserves_date_without_data(self):
+        """Verifies the fix: reindexing load_col before merging keeps D_WITHOUT_DATA."""
+        all_dates = [self.D_WITH_DATA, self.D_WITHOUT_DATA]
+        load_col  = self._build_load_col([self.D_WITH_DATA])         # no May 13
+        dft       = self._build_dft(all_dates)
+
+        # Fix: reindex load_col to the full date list before merging
+        load_col = load_col.reindex(pd.Index(all_dates), fill_value='0% U')
+        result = load_col.merge(dft, left_index=True, right_index=True, how='left').T
+
+        self.assertIn(self.D_WITH_DATA,    result.columns)
+        self.assertIn(self.D_WITHOUT_DATA, result.columns,
+                      "After fix: date without data must appear in output")
+        self.assertEqual(result.loc['LoadPct', self.D_WITHOUT_DATA], '0% U')
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

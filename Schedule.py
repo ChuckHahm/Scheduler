@@ -325,7 +325,10 @@ def display_output(n, view_select):
         dft = shift_state.xs(district, level=0).merge(dft, left_index=True, right_index=True, how='outer')
         dft = dft.merge(shift_counts.xs(district, level=0), left_index=True, right_index=True, how='outer')
 
-        load_col = load_pct_df.xs(district, level='District')[['LoadPct']].astype(int).astype(str)
+        all_dates = pd.Index([d[4:] for d in date_list])
+        load_col = (load_pct_df.xs(district, level='District')[['LoadPct']]
+                    .reindex(all_dates, fill_value=0)
+                    .astype(int).astype(str))
         load_col['LoadPct'] = load_col['LoadPct'].apply(
             lambda x: f"{x}% E" if int(x) > THRESH else f"{x}% U"
         )
