@@ -2,6 +2,7 @@
 # Customer Appointment Minutes Manager (CAMM)
 #
 import dash
+import os
 import pandas as pd
 import numpy as np
 from datetime import datetime as dt
@@ -26,9 +27,12 @@ TEST_MODE         = False
 SUP_DISTRICT = {'SUP01': 'BC', 'SUP02': 'NE', 'SUP03': 'EA', 'SUP04': 'CM', 'SUP05': 'NC'}
 DB_SECOND_INTERVAL = 200_000 if PAUSE_INTERRUPT else 1
 
-ORDER_INFILE      = '/app/Projects/ApptWin/data/FutureOrders.csv'
-FUTURE_SHIFT_FILE = '/app/Projects/ApptWin/data/CurrentFutureShift.csv'
-JOB_TABLE_FILE    = '/app/Projects/ApptWin/data/ApptJobCodesAug25_2024.csv'
+PROD_DATA_DIR  = '/app/Projects/ApptWin/data'
+LOCAL_DATA_DIR = 'data'
+
+ORDER_INFILE      = os.path.join(PROD_DATA_DIR, 'FutureOrders.csv')
+FUTURE_SHIFT_FILE = os.path.join(PROD_DATA_DIR, 'CurrentFutureShift.csv')
+JOB_TABLE_FILE    = os.path.join(PROD_DATA_DIR, 'ApptJobCodesAug25_2024.csv')
 
 # Row index 0/1/2 from an active_cell click maps to these ApptType short labels
 _DISTRICTS    = ['BC', 'CM', 'EA', 'NC', 'NE']
@@ -100,8 +104,8 @@ def get_agc_state_list(district):
 
 def get_order_data():
     orders = pd.read_csv(ORDER_INFILE)
-    old_jc = pd.read_csv('data/JobCodesMar8_2022.csv')
-    new_jc = pd.read_csv('data/ApptJobCodesAug25_2024.csv')
+    old_jc = pd.read_csv(os.path.join(LOCAL_DATA_DIR, 'JobCodesMar8_2022.csv'))
+    new_jc = pd.read_csv(os.path.join(LOCAL_DATA_DIR, 'ApptJobCodesAug25_2024.csv'))
     jc = old_jc.merge(new_jc, left_on='JOBCODE', right_on='JOB_CODE_NAME', how='outer')
     for col in ('CREATED', 'EXPIRES', 'ELIGIBLE'):
         orders[col] = (pd.to_datetime(orders[col])
@@ -274,7 +278,7 @@ def update_clock(n):
     prevent_initial_call=True,
 )
 def download_appointments(n_clicks):
-    df = pd.read_csv('data/ApptMinTable.csv')
+    df = pd.read_csv(os.path.join(LOCAL_DATA_DIR, 'ApptMinTable.csv'))
     return dcc.send_data_frame(df.to_csv, f"ApptTable_{dt.now().strftime('%Y%m%d_%H%M%S')}.csv")
 
 
@@ -284,7 +288,7 @@ def download_appointments(n_clicks):
     prevent_initial_call=True,
 )
 def download_shift(n_clicks):
-    df = pd.read_csv('data/ShiftTable.csv')
+    df = pd.read_csv(os.path.join(LOCAL_DATA_DIR, 'ShiftTable.csv'))
     return dcc.send_data_frame(df.to_csv, f"ShiftTable_{dt.now().strftime('%Y%m%d_%H%M%S')}.csv")
 
 
@@ -417,7 +421,7 @@ def _get_appt_slot_data(active_cell, columns, tdata, dvd, dva, district):
 
     order_sel = orders.loc[fltr, ['ORDER_NUM', 'JOBCODE', 'Job', 'Skill', 'JOB_CODE_DESCRIPTION',
                                    'AREA', 'ADDRESS', 'TotMin', 'REASON', 'SVCGNTY', 'BOOKING_FLAG']]
-    order_sel.to_csv('data/Appointments.csv', index=False)
+    order_sel.to_csv(os.path.join(LOCAL_DATA_DIR, 'Appointments.csv'), index=False)
     order_cols    = [{'name': c, 'id': c} for c in order_sel.columns]
     order_records = order_sel[:500].to_dict('records')
 
@@ -450,7 +454,7 @@ def _get_appt_slot_data(active_cell, columns, tdata, dvd, dva, district):
     working_sel = shift_sel[shift_sel.PERIOD_NAME.str.contains('Closed|Working Loading')]
     shift_sel.loc[shift_sel.PERIOD_NAME.isin(['Busy', 'Safety Meeting']), 'SHIFT_NAME'] = 'Exception'
     shift_sel   = shift_sel[shift_sel.TECH_NAME.isin(working_sel.TECH_NAME)].sort_values('TECH_NAME')
-    shift_sel.to_csv('data/ShiftTable.csv', index=False)
+    shift_sel.to_csv(os.path.join(LOCAL_DATA_DIR, 'ShiftTable.csv'), index=False)
     shift_cols    = [{'name': c, 'id': c} for c in shift_sel.columns]
     shift_records = shift_sel[:500].to_dict('records')
 
